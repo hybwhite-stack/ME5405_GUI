@@ -1,0 +1,4 @@
+easyocr==1.7.2
+numpy>=2,<3
+opencv-python-headless>=4.11,<5
+Pillow>=11,<13
