@@ -1,5 +1,3 @@
-"""Preprocessing operations used by the GUI's manual workflow."""
-
 from .basic import save_image
 from .pipeline import (
     OPERATIONS,
