@@ -26,7 +26,7 @@ def load_image(image_path: Path) -> np.ndarray:
     encoded = np.fromfile(str(image_path), dtype=np.uint8)
     image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if image is None:
-        raise ValueError("OpenCV 无法解码该图片")
+        raise ValueError("OpenCV could not decode this image")
     return image
 
 

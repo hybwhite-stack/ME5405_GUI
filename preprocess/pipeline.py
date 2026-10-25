@@ -32,20 +32,20 @@ class PipelineResult:
 
 
 OPERATIONS: dict[str, OperationSpec] = {
-    "raw": OperationSpec("raw", "原图", "基础", "不执行预处理。", "any", "same"),
-    "roi": OperationSpec("roi", "裁剪文字区域", "基础", "裁剪目标区域以减少背景干扰。", "any", "same", spatial=True),
-    "rotate": OperationSpec("rotate", "旋转校正", "几何", "按指定角度旋转并扩展画布。", "any", "same", {"angle": None}, True),
-    "perspective": OperationSpec("perspective", "透视校正", "几何", "用四角将斜拍区域拉正。", "any", "same", {"corners": None}, True),
-    "gray": OperationSpec("gray", "灰度化", "基础", "将彩色图转换为单通道灰度图。", "color_or_gray", "gray"),
-    "contrast": OperationSpec("contrast", "对比度拉伸", "增强", "用2%和98%分位点扩展灰度范围。", "gray", "gray", {"low_percentile": 2, "high_percentile": 98}),
-    "equalize": OperationSpec("equalize", "全局直方图均衡", "增强", "重新分配整幅图的灰度直方图。", "gray", "gray"),
-    "clahe": OperationSpec("clahe", "CLAHE局部增强", "增强", "分块提升局部对比度并限制噪声放大。", "gray", "gray", {"clip_limit": 2.0, "tile_grid": [8, 8]}),
-    "median": OperationSpec("median", "中值滤波", "滤波", "抑制脉冲噪声并尽量保持边缘。", "gray", "gray", {"kernel": 3}),
-    "gaussian": OperationSpec("gaussian", "高斯滤波", "滤波", "平滑高频噪声。", "gray", "gray", {"kernel": 3, "sigma": 0.8}),
-    "bilateral": OperationSpec("bilateral", "双边滤波", "滤波", "平滑纹理并尽量保持边缘。", "gray", "gray", {"diameter": 5, "sigma_color": 40, "sigma_space": 40}),
-    "otsu": OperationSpec("otsu", "Otsu二值化", "二值化", "整幅图使用一个自动全局阈值。", "gray", "binary"),
-    "adaptive": OperationSpec("adaptive", "自适应二值化", "二值化", "不同区域使用局部阈值。", "gray", "binary", {"block_size": 31, "constant": 11}),
-    "sharpen": OperationSpec("sharpen", "温和锐化", "增强", "使用反锐化掩模增强边缘，不是真正去模糊。", "gray", "gray", {"sigma": 1.0, "amount": 0.5}),
+    "raw": OperationSpec("raw", "Original", "Basic", "No preprocessing.", "any", "same"),
+    "roi": OperationSpec("roi", "Crop region", "Basic", "Crop the selected region.", "any", "same", spatial=True),
+    "rotate": OperationSpec("rotate", "Rotate", "Geometry", "Rotate by an angle.", "any", "same", {"angle": None}, True),
+    "perspective": OperationSpec("perspective", "Perspective correction", "Geometry", "Straighten a four-corner region.", "any", "same", {"corners": None}, True),
+    "gray": OperationSpec("gray", "Grayscale", "Basic", "Convert to grayscale.", "color_or_gray", "gray"),
+    "contrast": OperationSpec("contrast", "Contrast stretch", "Enhancement", "Stretch the grayscale range.", "gray", "gray", {"low_percentile": 2, "high_percentile": 98}),
+    "equalize": OperationSpec("equalize", "Histogram equalization", "Enhancement", "Equalize the image histogram.", "gray", "gray"),
+    "clahe": OperationSpec("clahe", "CLAHE", "Enhancement", "Improve local contrast.", "gray", "gray", {"clip_limit": 2.0, "tile_grid": [8, 8]}),
+    "median": OperationSpec("median", "Median filter", "Filtering", "Reduce impulse noise.", "gray", "gray", {"kernel": 3}),
+    "gaussian": OperationSpec("gaussian", "Gaussian filter", "Filtering", "Smooth image noise.", "gray", "gray", {"kernel": 3, "sigma": 0.8}),
+    "bilateral": OperationSpec("bilateral", "Bilateral filter", "Filtering", "Smooth while keeping edges.", "gray", "gray", {"diameter": 5, "sigma_color": 40, "sigma_space": 40}),
+    "otsu": OperationSpec("otsu", "Otsu threshold", "Thresholding", "Use one automatic threshold.", "gray", "binary"),
+    "adaptive": OperationSpec("adaptive", "Adaptive threshold", "Thresholding", "Use local thresholds.", "gray", "binary", {"block_size": 31, "constant": 11}),
+    "sharpen": OperationSpec("sharpen", "Sharpen", "Enhancement", "Increase edge contrast.", "gray", "gray", {"sigma": 1.0, "amount": 0.5}),
 }
 
 
@@ -58,11 +58,11 @@ def _coerce_recipe(recipe: list[str | dict]) -> list[dict]:
             operation_id = item["op"]
             params = item.get("params", {})
             if not isinstance(params, dict):
-                raise ValueError(f"{operation_id}: params 必须是对象")
+                raise ValueError(f"{operation_id}: params must be an object")
         else:
-            raise ValueError("流程步骤必须是操作名称或包含 op/params 的对象")
+            raise ValueError("Each step must be an operation name or an op/params object")
         if operation_id not in OPERATIONS:
-            raise ValueError(f"未知预处理操作: {operation_id}")
+            raise ValueError(f"Unknown preprocessing operation: {operation_id}")
         result.append({"op": operation_id, "params": deepcopy(params)})
     return result
 
@@ -72,9 +72,9 @@ def normalize_recipe(recipe: list[str | dict], initial_kind: str = "color") -> l
     items = _coerce_recipe(recipe or ["raw"])
     names = [item["op"] for item in items]
     if "raw" in names and len(names) != 1:
-        raise ValueError("raw只能单独使用，不能与其他预处理步骤组合")
+        raise ValueError("The original image cannot be combined with other steps")
     if sum(name in {"otsu", "adaptive"} for name in names) > 1:
-        raise ValueError("Otsu和adaptive是互斥的二值化方法，同一流程只能选择一种")
+        raise ValueError("Choose either Otsu or adaptive thresholding, not both")
     kind = initial_kind
     normalized: list[dict] = []
     pixel_processing_started = False
@@ -82,15 +82,15 @@ def normalize_recipe(recipe: list[str | dict], initial_kind: str = "color") -> l
         spec = OPERATIONS[item["op"]]
         if spec.spatial:
             if pixel_processing_started:
-                raise ValueError(f"{spec.label}必须放在灰度、增强、滤波和二值化之前")
+                raise ValueError(f"{spec.label} must come before grayscale, enhancement, filtering, and thresholding")
         elif item["op"] != "raw":
             pixel_processing_started = True
         if spec.requires == "gray" and kind == "color":
-            raise ValueError(f"{spec.label}需要先进行灰度化")
+            raise ValueError(f"Add Grayscale before {spec.label}")
         if spec.requires == "gray" and kind == "binary":
-            raise ValueError(f"{spec.label}不能放在二值化之后")
+            raise ValueError(f"{spec.label} cannot come after thresholding")
         if spec.requires == "color_or_gray" and kind == "binary":
-            raise ValueError("二值化后不能再次灰度化")
+            raise ValueError("Grayscale cannot come after thresholding")
         normalized.append(item)
         if spec.produces != "same":
             kind = spec.produces
@@ -140,7 +140,7 @@ def _apply(operation_id: str, image: np.ndarray, params: dict, context: dict) ->
     if operation_id == "roi":
         roi = params.get("roi") or config.get("roi") or roi_from_detections(image, detections)
         if roi is None:
-            raise PipelineUnavailable("未设置ROI且原图没有可靠文字框；请在窗口中选择文字区域")
+            raise PipelineUnavailable("No crop region was set; select a region in the image window")
         result, metadata = crop_roi(image, roi)
         metadata["source"] = "manual_roi" if params.get("roi") or config.get("roi") else "raw_ocr_union_with_20px_margin"
         return result, metadata, extras
@@ -151,7 +151,7 @@ def _apply(operation_id: str, image: np.ndarray, params: dict, context: dict) ->
         if angle is None:
             angle = consistent_text_angle(detections)
         if angle is None:
-            raise PipelineUnavailable("未设置旋转角度且没有可靠一致文字倾角")
+            raise PipelineUnavailable("No rotation angle was set or detected")
         result, metadata = rotate_expanded(image, float(angle))
         metadata["source"] = "manual_angle" if params.get("angle") is not None or "angle" in config else "automatic_text_angle"
         return result, metadata, extras
@@ -161,13 +161,13 @@ def _apply(operation_id: str, image: np.ndarray, params: dict, context: dict) ->
         if corners is None:
             detected = detect_document_quad(image)
             if detected is None:
-                raise PipelineUnavailable("未设置四角且没有检测到可靠四边形；请在窗口中依次选择左上、右上、右下、左下")
+                raise PipelineUnavailable("No quadrilateral was found; select its four corners in the image window")
             corners = detected.tolist()
             source = "automatic_document_quad_requires_visual_review"
         result, metadata = perspective(image, corners)
         metadata["source"] = source
         return result, metadata, extras
-    raise ValueError(f"未知预处理操作: {operation_id}")
+    raise ValueError(f"Unknown preprocessing operation: {operation_id}")
 
 
 def run_pipeline(image: np.ndarray, recipe: list[str | dict], context: dict | None = None) -> PipelineResult:

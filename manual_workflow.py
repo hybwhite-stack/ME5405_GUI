@@ -19,7 +19,7 @@ FINAL_FIELDS = [
     "final_pipeline", "final_ocr_text", "final_confidence", "final_cer", "final_one_minus_cer_percent",
     "cer_improvement_percentage_points", "processed_image", "annotated_image",
 ]
-DISPLAY_RESULT_FIELDS = ["图片名称", "部分", "项目", "结果"]
+DISPLAY_RESULT_FIELDS = ["image_name", "section", "item", "result"]
 ATTEMPT_FIELDS = [
     "image_name", "attempt_id", "label", "pipeline", "selected", "ocr_text",
     "weighted_confidence", "cer", "one_minus_cer_percent", "ground_truth",
@@ -84,7 +84,7 @@ def execute_attempt(
     recipe: list,
     ground_truth: str = "",
     threshold: float = 0.20,
-    label: str = "自定义流程",
+    label: str = "Selected steps",
     context: dict | None = None,
 ) -> dict:
     pipeline = run_pipeline(original, recipe, context or {})
@@ -121,7 +121,7 @@ def load_recipes(path: Path) -> dict:
         return {"version": 1, "images": {}}
     data = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(data, dict) or not isinstance(data.get("images", {}), dict):
-        raise ValueError("manual_recipes.json 格式无效")
+        raise ValueError("Invalid manual_recipes.json format")
     return {"version": 1, "images": data.get("images", {})}
 
 
@@ -152,27 +152,27 @@ def _display_result_rows(final_rows: list[dict]) -> list[dict]:
         name = result["image_name"]
 
         def add(part: str, item: str, value) -> None:
-            rows.append({"图片名称": name, "部分": part, "项目": item, "结果": value})
+            rows.append({"image_name": name, "section": part, "item": item, "result": value})
 
-        raw_cer = f"{float(result['raw_cer']):.2%}" if result["raw_cer"] else "未计算"
-        final_cer = f"{float(result['final_cer']):.2%}" if result["final_cer"] else "未计算"
+        raw_cer = f"{float(result['raw_cer']):.2%}" if result["raw_cer"] else "not calculated"
+        final_cer = f"{float(result['final_cer']):.2%}" if result["final_cer"] else "not calculated"
         raw_confidence = f"{float(result['raw_confidence']):.4f}" if result["raw_confidence"] != "" else "—"
         final_confidence = f"{float(result['final_confidence']):.4f}" if result["final_confidence"] != "" else "—"
         improvement = (
-            f"{float(result['cer_improvement_percentage_points']):.2f} 个百分点"
+            f"{float(result['cer_improvement_percentage_points']):.2f} percentage points"
             if result["cer_improvement_percentage_points"]
-            else "无法计算"
+            else "not available"
         )
-        add("基本信息", "人工正确文字", result["ground_truth"] or "未填写")
-        add("RAW原图基准", "处理流程", result["raw_pipeline"] or "raw")
-        add("RAW原图基准", "OCR输出字符", result["raw_ocr_text"] or "未识别出字符")
-        add("RAW原图基准", "confidence", raw_confidence)
-        add("RAW原图基准", "CER", raw_cer)
-        add("最终预处理结果", "处理流程", result["final_pipeline"])
-        add("最终预处理结果", "OCR输出字符", result["final_ocr_text"] or "未识别出字符")
-        add("最终预处理结果", "confidence", final_confidence)
-        add("最终预处理结果", "CER", final_cer)
-        add("最终预处理结果", "CER改善", improvement)
+        add("Image", "Ground truth", result["ground_truth"] or "not entered")
+        add("Original baseline", "Steps", result["raw_pipeline"] or "raw")
+        add("Original baseline", "OCR text", result["raw_ocr_text"] or "no text detected")
+        add("Original baseline", "Confidence", raw_confidence)
+        add("Original baseline", "CER", raw_cer)
+        add("Final result", "Steps", result["final_pipeline"])
+        add("Final result", "OCR text", result["final_ocr_text"] or "no text detected")
+        add("Final result", "Confidence", final_confidence)
+        add("Final result", "CER", final_cer)
+        add("Final result", "CER improvement", improvement)
     return rows
 
 
@@ -190,47 +190,47 @@ def _html_report(entries: list[dict], final_rows: list[dict], attempt_rows: list
         attempt_cards = []
         for row in attempts_by_name.get(name, []):
             state = " selected" if row["selected"] == "true" else ""
-            cer = f"{float(row['cer']):.2%}" if row["cer"] else "未填写真值"
+            cer = f"{float(row['cer']):.2%}" if row["cer"] else "no ground truth"
             attempt_cards.append(
                 f'<div class="attempt{state}"><b>{escape(row["label"])}</b>'
                 f'<div>{escape(row["pipeline"])}</div><div>confidence: {float(row["weighted_confidence"]):.3f} · CER: {cer}</div>'
-                f'<div><b>OCR识别文字：</b></div><pre>{escape(row["ocr_text"])}</pre></div>'
+                f'<div><b>OCR text:</b></div><pre>{escape(row["ocr_text"])}</pre></div>'
             )
-        raw_cer = f"{float(final['raw_cer']):.2%}" if final["raw_cer"] else "未测试或未填写真值"
-        final_cer = f"{float(final['final_cer']):.2%}" if final["final_cer"] else "未填写真值"
+        raw_cer = f"{float(final['raw_cer']):.2%}" if final["raw_cer"] else "not tested or no ground truth"
+        final_cer = f"{float(final['final_cer']):.2%}" if final["final_cer"] else "no ground truth"
         improvement = (
-            f"{float(final['cer_improvement_percentage_points']):.2f} 个百分点"
-            if final["cer_improvement_percentage_points"] else "无法计算"
+            f"{float(final['cer_improvement_percentage_points']):.2f} percentage points"
+            if final["cer_improvement_percentage_points"] else "not available"
         )
         raw_confidence = f"{float(final['raw_confidence']):.3f}" if final["raw_confidence"] != "" else "—"
         final_confidence = f"{float(final['final_confidence']):.3f}" if final["final_confidence"] != "" else "—"
         original_rel = final.get("raw_image") or f'originals/{entry["artifact_id"]}{Path(name).suffix.lower()}'
         raw_annotated_rel = final.get("raw_annotated_image", "")
         raw_annotated_figure = (
-            f'<figure><img src="{escape(raw_annotated_rel)}"><figcaption>RAW OCR标注图</figcaption></figure>'
+            f'<figure><img src="{escape(raw_annotated_rel)}"><figcaption>Original OCR annotations</figcaption></figure>'
             if raw_annotated_rel
-            else '<figure class="missing"><div>没有RAW标注图</div><figcaption>请先运行原图基准</figcaption></figure>'
+            else '<figure class="missing"><div>No original annotations</div><figcaption>Run the original baseline first</figcaption></figure>'
         )
         cards.append(
             f'<section class="image-card"><h2>{escape(name)}</h2>'
-            f'<div class="truth"><span>人工正确文字</span><pre>{escape(final["ground_truth"] or "未填写")}</pre></div>'
-            f'<article class="result-block raw-block"><div class="block-title"><span>1</span><h3>RAW 原图基准</h3></div>'
-            f'<div class="visuals"><figure><img src="{escape(original_rel)}"><figcaption>RAW原图</figcaption></figure>{raw_annotated_figure}</div>'
-            f'<div class="metrics"><div><small>处理方法</small><strong>{escape(final["raw_pipeline"] or "raw")}</strong></div>'
+            f'<div class="truth"><span>Ground truth</span><pre>{escape(final["ground_truth"] or "not entered")}</pre></div>'
+            f'<article class="result-block raw-block"><div class="block-title"><span>1</span><h3>Original baseline</h3></div>'
+            f'<div class="visuals"><figure><img src="{escape(original_rel)}"><figcaption>Original image</figcaption></figure>{raw_annotated_figure}</div>'
+            f'<div class="metrics"><div><small>Steps</small><strong>{escape(final["raw_pipeline"] or "raw")}</strong></div>'
             f'<div><small>confidence</small><strong>{raw_confidence}</strong></div><div><small>CER</small><strong>{raw_cer}</strong></div></div>'
-            f'<div class="ocr-text"><h4>RAW OCR输出字符</h4><pre>{escape(final["raw_ocr_text"] or "未识别出字符")}</pre></div></article>'
-            f'<div class="divider"><span>↓</span> 与RAW原图比较</div>'
-            f'<article class="result-block final-block"><div class="block-title"><span>2</span><h3>最终预处理结果</h3></div>'
-            f'<div class="visuals"><figure><img src="{escape(final["processed_image"])}"><figcaption>最终处理图</figcaption></figure>'
-            f'<figure><img src="{escape(final["annotated_image"])}"><figcaption>最终OCR标注图</figcaption></figure></div>'
-            f'<div class="metrics"><div><small>最终方法</small><strong>{escape(final["final_pipeline"])}</strong></div>'
+            f'<div class="ocr-text"><h4>Original OCR text</h4><pre>{escape(final["raw_ocr_text"] or "no text detected")}</pre></div></article>'
+            f'<div class="divider"><span>↓</span> Compared with the original</div>'
+            f'<article class="result-block final-block"><div class="block-title"><span>2</span><h3>Final result</h3></div>'
+            f'<div class="visuals"><figure><img src="{escape(final["processed_image"])}"><figcaption>Processed image</figcaption></figure>'
+            f'<figure><img src="{escape(final["annotated_image"])}"><figcaption>Final OCR annotations</figcaption></figure></div>'
+            f'<div class="metrics"><div><small>Final steps</small><strong>{escape(final["final_pipeline"])}</strong></div>'
             f'<div><small>confidence</small><strong>{final_confidence}</strong></div><div><small>CER</small><strong>{final_cer}</strong></div>'
-            f'<div><small>CER改善</small><strong>{improvement}</strong></div></div>'
-            f'<div class="ocr-text"><h4>最终OCR输出字符</h4><pre>{escape(final["final_ocr_text"] or "未识别出字符")}</pre></div></article>'
-            f'<details><summary>查看本图尝试过的流程</summary>{"".join(attempt_cards)}</details></section>'
+            f'<div><small>CER improvement</small><strong>{improvement}</strong></div></div>'
+            f'<div class="ocr-text"><h4>Final OCR text</h4><pre>{escape(final["final_ocr_text"] or "no text detected")}</pre></div></article>'
+            f'<details><summary>View attempts for this image</summary>{"".join(attempt_cards)}</details></section>'
         )
     return f"""<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>ME5405 手工预处理总览</title>
+<html lang="en"><head><meta charset="utf-8"><title>ME5405 Manual Preprocessing Results</title>
 <style>
 body{{font-family:"Microsoft YaHei",Arial,sans-serif;margin:24px auto;max-width:1120px;padding:0 16px;background:#eef1f5;color:#1f2937}}
 h1{{margin-bottom:4px}} .note{{color:#5b6472}} .image-card{{background:white;padding:22px;margin:22px 0;border-radius:14px;box-shadow:0 3px 12px #0001}}
@@ -247,8 +247,8 @@ figcaption{{text-align:center;margin-top:7px;color:#475569}} .missing{{height:33
 .divider{{text-align:center;margin:14px 0;color:#475569;font-weight:700}} .divider span{{display:block;font-size:25px;color:#16a34a}}
 details{{margin-top:18px}} .attempt{{border:1px solid #d7dce2;padding:10px;margin:8px 0;border-radius:8px}} .attempt.selected{{border:2px solid #16a34a;background:#f0fdf4}}
 @media(max-width:760px){{.visuals,.metrics{{grid-template-columns:1fr}} img{{height:250px}}}}
-</style></head><body><h1>ME5405 OCR 手工预处理总览</h1>
-<p class="note">每张图分为RAW原图基准和最终预处理结果两部分。OCR输出字符完整显示；CER来自人工真值，confidence不是准确率。</p>{''.join(cards)}</body></html>"""
+</style></head><body><h1>ME5405 OCR Results</h1>
+<p class="note">Each image shows the original baseline and the final result. CER uses the ground truth; confidence is not accuracy.</p>{''.join(cards)}</body></html>"""
 
 
 def export_manual_run(output_root: Path, entries: list[dict]) -> Path:

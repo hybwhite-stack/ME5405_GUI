@@ -11,11 +11,11 @@ def save_image(path: Path, image: np.ndarray) -> None:
         raise ValueError(f"Cannot encode image: {path}")
     encoded.tofile(str(path))
 
-#transfer color images into greyscale 
+# Convert a color image to grayscale.
 def to_gray(image: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image.copy()
 
-#crop images for region of interest (ROI) based on the provided coordinates.
+# Crop the selected region.
 def crop_roi(image: np.ndarray, roi: list[int]) -> tuple[np.ndarray, dict]:
     if not isinstance(roi, list) or len(roi) != 4 or any(type(value) is not int for value in roi):
         raise ValueError("roi must be four integers [x,y,width,height]")

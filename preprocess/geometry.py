@@ -8,11 +8,11 @@ from .basic import to_gray
 def validate_quad(points, width: int, height: int) -> np.ndarray:
     quad = np.asarray(points, dtype=np.float32)
     if quad.shape != (4, 2) or not np.isfinite(quad).all():
-        raise ValueError("corners 必须是四个 [x,y] 点")
+        raise ValueError("corners must contain four [x, y] points")
     if np.any(quad[:, 0] < 0) or np.any(quad[:, 0] >= width) or np.any(quad[:, 1] < 0) or np.any(quad[:, 1] >= height):
-        raise ValueError("corners 超出原图范围")
+        raise ValueError("corners are outside the image")
     if not cv2.isContourConvex(quad) or abs(cv2.contourArea(quad)) < 100:
-        raise ValueError("四角必须按左上、右上、右下、左下顺序构成凸四边形")
+        raise ValueError("corners must form a convex quadrilateral in clockwise order")
     return quad
 
 
@@ -22,7 +22,7 @@ def perspective(image: np.ndarray, points) -> tuple[np.ndarray, dict]:
     width = int(round(max(np.linalg.norm(top_right - top_left), np.linalg.norm(bottom_right - bottom_left))))
     height = int(round(max(np.linalg.norm(bottom_left - top_left), np.linalg.norm(bottom_right - top_right))))
     if width < 10 or height < 10:
-        raise ValueError("透视目标尺寸过小")
+        raise ValueError("The perspective target is too small")
     destination = np.float32([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]])
     matrix = cv2.getPerspectiveTransform(quad, destination)
     border = (255, 255, 255) if image.ndim == 3 else 255
@@ -55,7 +55,7 @@ def detect_document_quad(image: np.ndarray):
 
 def rotate_expanded(image: np.ndarray, angle: float) -> tuple[np.ndarray, dict]:
     if not math.isfinite(angle) or abs(angle) > 180:
-        raise ValueError("angle 必须在 -180 到 180 之间")
+        raise ValueError("angle must be between -180 and 180 degrees")
     height, width = image.shape[:2]
     matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)
     sine, cosine = abs(matrix[0, 1]), abs(matrix[0, 0])
