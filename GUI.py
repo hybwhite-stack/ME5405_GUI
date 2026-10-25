@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import importlib
 from pathlib import Path
+import sys
 import threading
+from types import ModuleType
 import webbrowser
 
 import cv2
@@ -12,10 +15,42 @@ from PIL import Image, ImageTk
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+
+def _load_available_preprocessing() -> None:
+    """Load the current preprocess sources without their stale package imports."""
+    package = ModuleType("preprocess")
+    package.__path__ = [str(Path(__file__).resolve().parent / "preprocess")]
+    package.__package__ = "preprocess"
+    sys.modules["preprocess"] = package
+
+    # pipeline.py still imports the deleted module, but the matching operations
+    # are removed from the GUI catalog before any recipe can use them.
+    morphology = ModuleType("preprocess.morphology")
+    sys.modules[morphology.__name__] = morphology
+    package.morphology = morphology
+
+    previous_bytecode_setting = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        basic = importlib.import_module("preprocess.basic")
+        pipeline = importlib.import_module("preprocess.pipeline")
+    finally:
+        sys.dont_write_bytecode = previous_bytecode_setting
+
+    unavailable = {"open", "close"}
+    for operation_id in unavailable:
+        pipeline.OPERATIONS.pop(operation_id, None)
+    for name in ("OPERATIONS", "PipelineUnavailable", "normalize_recipe", "recipe_label", "run_pipeline"):
+        setattr(package, name, getattr(pipeline, name))
+    package.save_image = basic.save_image
+
+
+_load_available_preprocessing()
+
 from evaluation import load_ground_truth
 from manual_workflow import execute_attempt, export_manual_run, load_recipes, save_ground_truth, save_recipes
 from ocr_pipeline import find_images, load_image
-from preprocess import OPERATIONS, PRESETS, PipelineUnavailable, normalize_recipe, recipe_label, run_pipeline
+from preprocess import OPERATIONS, PipelineUnavailable, normalize_recipe, recipe_label, run_pipeline
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -129,14 +164,6 @@ PARAMETER_FIELDS: dict[str, list[tuple[str, str, str, str]]] = {
     "adaptive": [
         ("block_size", "局部窗口大小", "odd", "奇数，至少 3"),
         ("constant", "阈值常数 C", "float", "可为负数"),
-    ],
-    "open": [
-        ("kernel", "结构元素（宽,高）", "pair", "例如 2,2"),
-        ("iterations", "迭代次数", "positive_int", "至少 1"),
-    ],
-    "close": [
-        ("kernel", "结构元素（宽,高）", "pair", "例如 2,2"),
-        ("iterations", "迭代次数", "positive_int", "至少 1"),
     ],
     "sharpen": [
         ("sigma", "模糊 Sigma", "positive_float", "必须大于 0"),
@@ -381,7 +408,6 @@ class OCRPreprocessApp:
         self.reader_lock = threading.Lock()
         self.busy = False
         self.operation_display = {f"[{spec.category}] {spec.label}": operation_id for operation_id, spec in OPERATIONS.items() if operation_id != "raw"}
-        self.preset_display = {data["label"]: preset_id for preset_id, data in PRESETS.items()}
         self._build_ui()
         self.reload_images()
 
@@ -460,13 +486,8 @@ class OCRPreprocessApp:
         self.controls_notebook.add(configuration, text="流程与真值")
         self.controls_notebook.add(self.results_tab, text="识别结果")
 
-        ttk.Label(form, text="01  预处理流程", style="Heading.TLabel").pack(anchor="w")
-        ttk.Label(form, text="选择预设，或按需要组合处理步骤。", style="CardMuted.TLabel").pack(anchor="w", pady=(4, 10))
-        preset_row = ttk.Frame(form, style="Card.TFrame")
-        preset_row.pack(fill="x")
-        self.preset_var = tk.StringVar(value=next(iter(self.preset_display)))
-        ttk.Combobox(preset_row, textvariable=self.preset_var, values=list(self.preset_display), state="readonly", width=16).pack(side="left", fill="x", expand=True)
-        ttk.Button(preset_row, text="应用", style="Small.TButton", command=self.apply_preset).pack(side="left", padx=(6, 0))
+        ttk.Label(form, text="01  自选预处理步骤", style="Heading.TLabel").pack(anchor="w")
+        ttk.Label(form, text="逐个添加处理方式，并按执行顺序排列。需要灰度图的操作请先添加灰度化。", style="CardMuted.TLabel", wraplength=320).pack(anchor="w", pady=(4, 10))
 
         recipe_frame = ttk.Frame(form, style="Card.TFrame")
         recipe_frame.pack(fill="x", pady=(12, 10))
@@ -533,8 +554,6 @@ class OCRPreprocessApp:
         action_row.pack(fill="x")
         self.run_button = ttk.Button(action_row, text="运行 OCR", style="Primary.TButton", command=self.run_current_ocr)
         self.run_button.pack(side="left", fill="x", expand=True, padx=(0, 3))
-        self.compare_button = ttk.Button(action_row, text="比较常用预设", command=self.compare_presets)
-        self.compare_button.pack(side="left", fill="x", expand=True, padx=(3, 0))
 
         self.status_var = tk.StringVar(value="就绪")
         status = ttk.Frame(self.root, padding=(20, 9))
@@ -571,9 +590,9 @@ class OCRPreprocessApp:
                 saved_image = saved.get(path.name, {})
                 recipe = saved_image.get("draft_recipe") or saved_image.get("recipe") or ["raw"]
                 try:
-                    recipe = normalize_recipe(recipe)
+                    recipe = normalize_recipe(recipe, auto_gray=False)
                 except ValueError:
-                    recipe = normalize_recipe(["raw"])
+                    recipe = normalize_recipe(["raw"], auto_gray=False)
                 self.entries[path.name] = {
                     "image_name": path.name,
                     "image_path": str(path),
@@ -607,7 +626,6 @@ class OCRPreprocessApp:
                 self.metric_var.set("confidence：待运行　CER：待运行")
                 self._refresh_final_label()
                 self.run_button.configure(state="disabled")
-                self.compare_button.configure(state="disabled")
                 self.status_var.set(f"目录中没有支持的图片：{self.input_dir}")
         except Exception as exc:
             messagebox.showerror("加载失败", str(exc))
@@ -695,7 +713,7 @@ class OCRPreprocessApp:
         if not entry:
             return False
         try:
-            entry["recipe"] = normalize_recipe(recipe)
+            entry["recipe"] = normalize_recipe(recipe, auto_gray=False)
         except ValueError as exc:
             messagebox.showwarning("流程不合法", str(exc))
             return False
@@ -705,10 +723,6 @@ class OCRPreprocessApp:
         self._save_draft_recipe()
         self.preview_pipeline()
         return True
-
-    def apply_preset(self) -> None:
-        preset_id = self.preset_display[self.preset_var.get()]
-        self._set_recipe(PRESETS[preset_id]["recipe"])
 
     def add_operation(self) -> None:
         entry = self.current_entry()
@@ -724,11 +738,6 @@ class OCRPreprocessApp:
                 if not messagebox.askyesno("更换二值化", "同一流程只能使用一种二值化。是否替换现有方法？"):
                     return
                 recipe.pop(existing)
-        if operation_id in {"open", "close"} and not any(item["op"] in {"otsu", "adaptive"} for item in recipe):
-            answer = messagebox.askyesnocancel("选择二值化", "形态学操作需要二值图。\n选择“是”加入Otsu；选择“否”加入adaptive。")
-            if answer is None:
-                return
-            recipe.append({"op": "otsu" if answer else "adaptive", "params": {}})
         item = {"op": operation_id, "params": {}}
         if OPERATIONS[operation_id].spatial:
             recipe.insert(0, item)
@@ -821,7 +830,6 @@ class OCRPreprocessApp:
         # 两个 OCR 按钮应当始终可用。
         if not self.busy:
             self.run_button.configure(state="normal")
-            self.compare_button.configure(state="normal")
 
     def save_current_ground_truth(self) -> None:
         entry = self.current_entry()
@@ -854,7 +862,6 @@ class OCRPreprocessApp:
         state = "disabled" if busy or not self.current_entry() else "normal"
         self.run_button.configure(state=state)
         self.run_button.configure(text="识别中…" if busy else "运行 OCR")
-        self.compare_button.configure(state=state)
         if busy:
             self.progress.start(12)
         else:
@@ -940,69 +947,7 @@ class OCRPreprocessApp:
         self.result_text.configure(state="disabled")
         self.final_button.configure(state="normal" if text else "disabled")
 
-    def compare_presets(self) -> None:
-        entry = self.current_entry()
-        if not entry or self.busy:
-            return
-        self.save_current_ground_truth()
-        name = entry["image_name"]
-        original = entry["original"].copy()
-        truth = entry["ground_truth"]
-        presets = [(preset_id, data) for preset_id, data in PRESETS.items() if preset_id not in {"perspective_clahe", "roi_clahe"}]
-        self._set_busy(True, f"正在比较 {len(presets)} 个常用预设……")
-
-        def work():
-            successes = []
-            failures = []
-            try:
-                reader = self._get_reader()
-                for position, (preset_id, data) in enumerate(presets, 1):
-                    try:
-                        successes.append(execute_attempt(reader, Path(entry["image_path"]), original, data["recipe"], truth, label=data["label"]))
-                    except Exception as exc:
-                        failures.append(f"{data['label']}: {exc}")
-                    self.root.after(0, lambda done=position, total=len(presets): self.status_var.set(f"正在比较常用预设：{done}/{total}"))
-                self.root.after(0, lambda: self._finish_comparison(name, successes, failures))
-            except Exception as exc:
-                self.root.after(0, lambda error=exc: self._finish_error(error))
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _finish_comparison(self, name: str, attempts: list[dict], failures: list[str]) -> None:
-        entry = self.entries[name]
-        start = len(entry["attempts"])
-        entry["attempts"].extend(attempts)
-        self._set_busy(False, f"预设比较完成：成功 {len(attempts)} 个，失败 {len(failures)} 个。")
-        if self.current_name == name:
-            self._show_comparison_window(entry, list(range(start, start + len(attempts))))
-
-    def _show_comparison_window(self, entry: dict, indices: list[int]) -> None:
-        window = tk.Toplevel(self.root)
-        window.title(f"常用预设比较 - {entry['image_name']}")
-        window.geometry("1250x760")
-        canvas = tk.Canvas(window)
-        scrollbar = ttk.Scrollbar(window, orient="vertical", command=canvas.yview)
-        content = ttk.Frame(canvas)
-        content.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=content, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        window._photos = []
-        for position, attempt_index in enumerate(indices):
-            attempt = entry["attempts"][attempt_index]
-            frame = ttk.LabelFrame(content, text=attempt["label"], padding=8)
-            frame.grid(row=position // 3, column=position % 3, padx=8, pady=8, sticky="nsew")
-            photo = _photo(attempt["processed"], (350, 230))
-            window._photos.append(photo)
-            ttk.Label(frame, image=photo).pack()
-            ttk.Label(frame, text=attempt["pipeline_label"], wraplength=340).pack(anchor="w", pady=4)
-            metric = attempt.get("evaluation") or {}
-            cer = f"{metric['cer']:.2%}" if metric.get("status") == "ok" else "未填写真值"
-            ttk.Label(frame, text=f"OCR：{attempt['text']}\nconfidence：{attempt['weighted_confidence']:.3f}　CER：{cer}", wraplength=340).pack(anchor="w")
-            ttk.Button(frame, text="设为最终方案", command=lambda i=attempt_index, w=window: self._select_attempt(i, w)).pack(fill="x", pady=(6, 0))
-
-    def _select_attempt(self, index: int, window=None) -> None:
+    def _select_attempt(self, index: int) -> None:
         entry = self.current_entry()
         if not entry:
             return
@@ -1021,12 +966,10 @@ class OCRPreprocessApp:
         save_recipes(self.recipe_path, data)
         self._refresh_final_label()
         self.status_var.set("已保存该图片的最终流程。")
-        if window:
-            window.destroy()
 
     def select_current_attempt(self) -> None:
         if self.current_attempt_index is None:
-            messagebox.showinfo("尚无OCR结果", "请先运行当前流程OCR或比较常用预设。")
+            messagebox.showinfo("尚无OCR结果", "请先运行当前流程 OCR。")
             return
         self._select_attempt(self.current_attempt_index)
 
