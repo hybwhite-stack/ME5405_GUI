@@ -24,14 +24,3 @@ def crop_roi(image: np.ndarray, roi: list[int]) -> tuple[np.ndarray, dict]:
         "roi_original_xywh": [x, y, width, height],
         "original_to_processed": [[1, 0, -x], [0, 1, -y], [0, 0, 1]],
     }
-
-
-def roi_from_detections(image: np.ndarray, detections: list[dict], margin: int = 20) -> list[int] | None:
-    if not detections:
-        return None
-    height, width = image.shape[:2]
-    x = max(0, min(item["x_min"] for item in detections) - margin)
-    y = max(0, min(item["y_min"] for item in detections) - margin)
-    right = min(width, max(item["x_max"] for item in detections) + margin)
-    bottom = min(height, max(item["y_max"] for item in detections) + margin)
-    return [int(x), int(y), int(right - x), int(bottom - y)]

@@ -3,8 +3,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 import numpy as np
 from . import enhancement, filters, thresholding
-from .basic import crop_roi, roi_from_detections, to_gray
-from .geometry import consistent_text_angle, detect_document_quad, perspective, rotate_expanded
+from .basic import crop_roi, to_gray
 
 
 class PipelineUnavailable(ValueError):
@@ -34,8 +33,6 @@ class PipelineResult:
 OPERATIONS: dict[str, OperationSpec] = {
     "raw": OperationSpec("raw", "Original", "Basic", "No preprocessing.", "any", "same"),
     "roi": OperationSpec("roi", "Crop region", "Basic", "Crop the selected region.", "any", "same", spatial=True),
-    "rotate": OperationSpec("rotate", "Rotate", "Geometry", "Rotate by an angle.", "any", "same", {"angle": None}, True),
-    "perspective": OperationSpec("perspective", "Perspective correction", "Geometry", "Straighten a four-corner region.", "any", "same", {"corners": None}, True),
     "gray": OperationSpec("gray", "Grayscale", "Basic", "Convert to grayscale.", "color_or_gray", "gray"),
     "contrast": OperationSpec("contrast", "Contrast stretch", "Enhancement", "Stretch the grayscale range.", "gray", "gray", {"low_percentile": 2, "high_percentile": 98}),
     "equalize": OperationSpec("equalize", "Histogram equalization", "Enhancement", "Equalize the image histogram.", "gray", "gray"),
@@ -107,7 +104,7 @@ def _params(spec: OperationSpec, supplied: dict) -> dict:
     return params
 
 
-def _apply(operation_id: str, image: np.ndarray, params: dict, context: dict) -> tuple[np.ndarray, dict, list[tuple[str, np.ndarray]]]:
+def _apply(operation_id: str, image: np.ndarray, params: dict) -> tuple[np.ndarray, dict, list[tuple[str, np.ndarray]]]:
     metadata: dict = {}
     extras: list[tuple[str, np.ndarray]] = []
     if operation_id == "raw":
@@ -135,42 +132,17 @@ def _apply(operation_id: str, image: np.ndarray, params: dict, context: dict) ->
         result, blurred = enhancement.sharpen(image, params["sigma"], params["amount"])
         extras.append(("blur", blurred))
         return result, params, extras
-    config = context.get("config", {})
-    detections = context.get("raw_detections", [])
     if operation_id == "roi":
-        roi = params.get("roi") or config.get("roi") or roi_from_detections(image, detections)
+        roi = params.get("roi")
         if roi is None:
             raise PipelineUnavailable("No crop region was set; select a region in the image window")
         result, metadata = crop_roi(image, roi)
-        metadata["source"] = "manual_roi" if params.get("roi") or config.get("roi") else "raw_ocr_union_with_20px_margin"
-        return result, metadata, extras
-    if operation_id == "rotate":
-        angle = params.get("angle")
-        if angle is None:
-            angle = config.get("angle")
-        if angle is None:
-            angle = consistent_text_angle(detections)
-        if angle is None:
-            raise PipelineUnavailable("No rotation angle was set or detected")
-        result, metadata = rotate_expanded(image, float(angle))
-        metadata["source"] = "manual_angle" if params.get("angle") is not None or "angle" in config else "automatic_text_angle"
-        return result, metadata, extras
-    if operation_id == "perspective":
-        corners = params.get("corners") or config.get("corners")
-        source = "manual_corners"
-        if corners is None:
-            detected = detect_document_quad(image)
-            if detected is None:
-                raise PipelineUnavailable("No quadrilateral was found; select its four corners in the image window")
-            corners = detected.tolist()
-            source = "automatic_document_quad_requires_visual_review"
-        result, metadata = perspective(image, corners)
-        metadata["source"] = source
+        metadata["source"] = "manual_roi"
         return result, metadata, extras
     raise ValueError(f"Unknown preprocessing operation: {operation_id}")
 
 
-def run_pipeline(image: np.ndarray, recipe: list[str | dict], context: dict | None = None) -> PipelineResult:
+def run_pipeline(image: np.ndarray, recipe: list[str | dict]) -> PipelineResult:
     initial_kind = "color" if image.ndim == 3 else "gray"
     normalized = normalize_recipe(recipe, initial_kind=initial_kind)
     result = image.copy()
@@ -179,7 +151,7 @@ def run_pipeline(image: np.ndarray, recipe: list[str | dict], context: dict | No
     for index, item in enumerate(normalized, 1):
         spec = OPERATIONS[item["op"]]
         params = _params(spec, item.get("params", {}))
-        result, metadata, extras = _apply(item["op"], result, params, context or {})
+        result, metadata, extras = _apply(item["op"], result, params)
         for extra_name, extra_image in extras:
             steps.append((f"{len(steps) + 1:02}_{extra_name}", extra_image))
         if item["op"] != "raw":

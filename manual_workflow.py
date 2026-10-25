@@ -64,7 +64,6 @@ def run_ocr(reader, image_name: str, processed, threshold: float = 0.20) -> dict
     raw = reader.readtext(
         image_bgr,
         detail=1,
-        rotation_info=None,
         workers=0,
         contrast_ths=0.0,
         paragraph=False,
@@ -85,9 +84,8 @@ def execute_attempt(
     ground_truth: str = "",
     threshold: float = 0.20,
     label: str = "Selected steps",
-    context: dict | None = None,
 ) -> dict:
-    pipeline = run_pipeline(original, recipe, context or {})
+    pipeline = run_pipeline(original, recipe)
     ocr = run_ocr(reader, image_path.name, pipeline.image, threshold)
     metric = character_metrics(ground_truth, ocr["text"], "normalized") if ground_truth.strip() else None
     return {

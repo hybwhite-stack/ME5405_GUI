@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from evaluation import load_ground_truth
 from manual_workflow import execute_attempt, export_manual_run, load_recipes, save_ground_truth, save_recipes
@@ -295,13 +295,11 @@ class ParameterDialog(tk.Toplevel):
 
 
 class PointSelector(tk.Toplevel):
-    def __init__(self, master, image: np.ndarray, mode: str):
+    def __init__(self, master, image: np.ndarray):
         super().__init__(master)
-        self.title("Select crop region" if mode == "roi" else "Select perspective corners")
+        self.title("Select crop region")
         self.transient(master)
         self.grab_set()
-        self.mode = mode
-        self.required = 2 if mode == "roi" else 4
         self.points: list[tuple[int, int]] = []
         self.result = None
         max_width, max_height = 1050, 700
@@ -313,8 +311,7 @@ class PointSelector(tk.Toplevel):
         self.canvas.pack(padx=10, pady=10)
         self.canvas.create_image(0, 0, image=self.photo, anchor="nw")
         self.canvas.bind("<Button-1>", self._click)
-        text = "Click the top-left and bottom-right corners" if mode == "roi" else "Click top-left, top-right, bottom-right, bottom-left"
-        self.status = ttk.Label(self, text=text)
+        self.status = ttk.Label(self, text="Click the top-left and bottom-right corners")
         self.status.pack(pady=(0, 6))
         buttons = ttk.Frame(self)
         buttons.pack(pady=(0, 10))
@@ -324,7 +321,7 @@ class PointSelector(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.destroy)
 
     def _click(self, event) -> None:
-        if len(self.points) >= self.required:
+        if len(self.points) >= 2:
             return
         point = (round(event.x / self.scale), round(event.y / self.scale))
         self.points.append(point)
@@ -334,7 +331,7 @@ class PointSelector(tk.Toplevel):
         if len(self.points) > 1:
             previous = self.points[-2]
             self.canvas.create_line(previous[0] * self.scale, previous[1] * self.scale, event.x, event.y, fill="#22c55e", width=2, tags="mark")
-        self.status.configure(text=f"Selected {len(self.points)}/{self.required} points")
+        self.status.configure(text=f"Selected {len(self.points)}/2 points")
 
     def _clear(self) -> None:
         self.points.clear()
@@ -342,15 +339,12 @@ class PointSelector(tk.Toplevel):
         self.status.configure(text="Click the points again")
 
     def _confirm(self) -> None:
-        if len(self.points) != self.required:
-            messagebox.showwarning("Not enough points", f"Select {self.required} points", parent=self)
+        if len(self.points) != 2:
+            messagebox.showwarning("Not enough points", "Select 2 points", parent=self)
             return
-        if self.mode == "roi":
-            (x1, y1), (x2, y2) = self.points
-            x, y = min(x1, x2), min(y1, y2)
-            self.result = [x, y, abs(x2 - x1), abs(y2 - y1)]
-        else:
-            self.result = [[x, y] for x, y in self.points]
+        (x1, y1), (x2, y2) = self.points
+        x, y = min(x1, x2), min(y1, y2)
+        self.result = [x, y, abs(x2 - x1), abs(y2 - y1)]
         self.destroy()
 
 
@@ -641,12 +635,8 @@ class OCRPreprocessApp:
 
     @staticmethod
     def _parameter_summary(operation_id: str, params: dict) -> str:
-        if operation_id == "rotate":
-            return f"angle={params.get('angle')}°" if params.get("angle") is not None else "set angle"
         if operation_id == "roi":
             return "region selected" if params.get("roi") else "select region"
-        if operation_id == "perspective":
-            return "corners selected" if params.get("corners") else "select corners"
         labels = {
             "low_percentile": "low", "high_percentile": "high", "clip_limit": "clip",
             "tile_grid": "tiles", "kernel": "kernel", "sigma": "sigma", "diameter": "diameter",
@@ -707,7 +697,7 @@ class OCRPreprocessApp:
             recipe.insert(0, item)
         else:
             recipe.append(item)
-        if self._set_recipe(recipe, len(recipe) - 1) and operation_id in {"roi", "perspective", "rotate"}:
+        if self._set_recipe(recipe, len(recipe) - 1) and operation_id == "roi":
             self.recipe_list.selection_clear(0, "end")
             index = next(i for i, value in enumerate(self.current_entry()["recipe"]) if value["op"] == operation_id)
             self.recipe_list.selection_set(index)
@@ -745,17 +735,12 @@ class OCRPreprocessApp:
             return
         item = deepcopy(entry["recipe"][index])
         operation_id = item["op"]
-        if operation_id == "rotate":
-            value = simpledialog.askfloat("Rotation angle", "Enter a counterclockwise angle (-180 to 180):", parent=self.root, minvalue=-180, maxvalue=180)
-            if value is None:
-                return
-            item["params"]["angle"] = value
-        elif operation_id in {"roi", "perspective"}:
-            selector = PointSelector(self.root, entry["original"], operation_id)
+        if operation_id == "roi":
+            selector = PointSelector(self.root, entry["original"])
             self.root.wait_window(selector)
             if selector.result is None:
                 return
-            item["params"]["roi" if operation_id == "roi" else "corners"] = selector.result
+            item["params"]["roi"] = selector.result
         elif operation_id in PARAMETER_FIELDS:
             params = deepcopy(OPERATIONS[operation_id].default_params)
             params.update(item.get("params", {}))
@@ -776,7 +761,7 @@ class OCRPreprocessApp:
         if not entry:
             return
         try:
-            self.preview_result = run_pipeline(entry["original"], entry["recipe"], {})
+            self.preview_result = run_pipeline(entry["original"], entry["recipe"])
             entry["recipe"] = self.preview_result.recipe
             self.processed_view.show(self.preview_result.image)
             self.status_var.set("Preview updated. Run OCR to refresh the results.")
