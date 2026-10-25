@@ -1,9 +1,8 @@
 from __future__ import annotations
-
 import cv2
 import numpy as np
 
-
+#Thresholding techniques to convert grayscale images into binary images.
 def otsu(gray: np.ndarray) -> np.ndarray:
     return cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 

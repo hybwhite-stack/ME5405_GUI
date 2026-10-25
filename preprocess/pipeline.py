@@ -1,11 +1,8 @@
 from __future__ import annotations
-
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Callable
-
 import numpy as np
-
 from . import enhancement, filters, morphology, thresholding
 from .basic import crop_roi, roi_from_detections, to_gray
 from .geometry import consistent_text_angle, detect_document_quad, perspective, rotate_expanded

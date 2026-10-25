@@ -1,9 +1,8 @@
 from __future__ import annotations
-
 import cv2
 import numpy as np
 
-
+#Three filters to reduce noise in grayscale images: median, gaussian, and bilateral.
 def median(gray: np.ndarray, kernel: int = 3) -> np.ndarray:
     return cv2.medianBlur(gray, kernel)
 
