@@ -1,9 +1,8 @@
 from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Callable
 import numpy as np
-from . import enhancement, filters, morphology, thresholding
+from . import enhancement, filters, thresholding
 from .basic import crop_roi, roi_from_detections, to_gray
 from .geometry import consistent_text_angle, detect_document_quad, perspective, rotate_expanded
 
@@ -32,15 +31,6 @@ class PipelineResult:
     metadata: dict = field(default_factory=dict)
 
 
-@dataclass
-class Candidate:
-    name: str
-    image: np.ndarray | None
-    steps: list = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)
-    skip_reason: str = ""
-
-
 OPERATIONS: dict[str, OperationSpec] = {
     "raw": OperationSpec("raw", "原图", "基础", "不执行预处理。", "any", "same"),
     "roi": OperationSpec("roi", "裁剪文字区域", "基础", "裁剪目标区域以减少背景干扰。", "any", "same", spatial=True),
@@ -55,47 +45,7 @@ OPERATIONS: dict[str, OperationSpec] = {
     "bilateral": OperationSpec("bilateral", "双边滤波", "滤波", "平滑纹理并尽量保持边缘。", "gray", "gray", {"diameter": 5, "sigma_color": 40, "sigma_space": 40}),
     "otsu": OperationSpec("otsu", "Otsu二值化", "二值化", "整幅图使用一个自动全局阈值。", "gray", "binary"),
     "adaptive": OperationSpec("adaptive", "自适应二值化", "二值化", "不同区域使用局部阈值。", "gray", "binary", {"block_size": 31, "constant": 11}),
-    "open": OperationSpec("open", "形态学开运算", "形态学", "去除小型前景噪点。", "binary", "binary", {"kernel": [2, 2], "iterations": 1}),
-    "close": OperationSpec("close", "形态学闭运算", "形态学", "连接轻微断裂笔画。", "binary", "binary", {"kernel": [2, 2], "iterations": 1}),
     "sharpen": OperationSpec("sharpen", "温和锐化", "增强", "使用反锐化掩模增强边缘，不是真正去模糊。", "gray", "gray", {"sigma": 1.0, "amount": 0.5}),
-}
-
-
-PRESETS: dict[str, dict] = {
-    "raw": {"label": "原图基准", "recipe": ["raw"]},
-    "low_contrast": {"label": "整体低对比度", "recipe": ["gray", "contrast"]},
-    "global_equalize": {"label": "整体偏暗/灰度集中", "recipe": ["gray", "equalize"]},
-    "uneven_light": {"label": "光照不均", "recipe": ["gray", "clahe"]},
-    "uniform_binary": {"label": "均匀光照二值化", "recipe": ["gray", "median", "otsu"]},
-    "uneven_binary": {"label": "不均匀光照二值化", "recipe": ["gray", "median", "adaptive"]},
-    "remove_speckles": {"label": "去除小噪点", "recipe": ["gray", "median", "otsu", "open"]},
-    "repair_strokes": {"label": "连接断裂笔画", "recipe": ["gray", "median", "otsu", "close"]},
-    "slight_blur": {"label": "轻微模糊", "recipe": ["gray", "sharpen"]},
-    "perspective_clahe": {"label": "斜拍校正并增强", "recipe": ["perspective", "gray", "clahe"]},
-    "roi_clahe": {"label": "裁剪文字区并增强", "recipe": ["roi", "gray", "clahe"]},
-}
-
-
-LEGACY_METHODS = (
-    "raw", "gray", "contrast", "equalize", "clahe", "median", "gaussian",
-    "bilateral", "otsu", "adaptive", "open", "close", "sharpen", "geometry", "roi",
-)
-
-LEGACY_RECIPES = {
-    "raw": ["raw"],
-    "gray": ["gray"],
-    "contrast": ["gray", "contrast"],
-    "equalize": ["gray", "equalize"],
-    "clahe": ["gray", "clahe"],
-    "median": ["gray", "median"],
-    "gaussian": ["gray", "gaussian"],
-    "bilateral": ["gray", "bilateral"],
-    "otsu": ["gray", "median", "otsu"],
-    "adaptive": ["gray", "median", "adaptive"],
-    "open": ["gray", "median", "otsu", "open"],
-    "close": ["gray", "median", "otsu", "close"],
-    "sharpen": ["gray", "sharpen"],
-    "roi": ["roi", "gray", "clahe"],
 }
 
 
@@ -117,8 +67,8 @@ def _coerce_recipe(recipe: list[str | dict]) -> list[dict]:
     return result
 
 
-def normalize_recipe(recipe: list[str | dict], initial_kind: str = "color", auto_gray: bool = True) -> list[dict]:
-    """Validate a recipe and visibly insert required grayscale conversion."""
+def normalize_recipe(recipe: list[str | dict], initial_kind: str = "color") -> list[dict]:
+    """Validate an ordered recipe selected by the user."""
     items = _coerce_recipe(recipe or ["raw"])
     names = [item["op"] for item in items]
     if "raw" in names and len(names) != 1:
@@ -136,15 +86,9 @@ def normalize_recipe(recipe: list[str | dict], initial_kind: str = "color", auto
         elif item["op"] != "raw":
             pixel_processing_started = True
         if spec.requires == "gray" and kind == "color":
-            if not auto_gray:
-                raise ValueError(f"{spec.label}需要先进行灰度化")
-            if not normalized or normalized[-1]["op"] != "gray":
-                normalized.append({"op": "gray", "params": {}, "auto_inserted": True})
-            kind = "gray"
+            raise ValueError(f"{spec.label}需要先进行灰度化")
         if spec.requires == "gray" and kind == "binary":
             raise ValueError(f"{spec.label}不能放在二值化之后")
-        if spec.requires == "binary" and kind != "binary":
-            raise ValueError(f"{spec.label}需要先选择Otsu或adaptive二值化")
         if spec.requires == "color_or_gray" and kind == "binary":
             raise ValueError("二值化后不能再次灰度化")
         normalized.append(item)
@@ -187,10 +131,6 @@ def _apply(operation_id: str, image: np.ndarray, params: dict, context: dict) ->
         return thresholding.otsu(image), {"threshold": "otsu"}, extras
     if operation_id == "adaptive":
         return thresholding.adaptive(image, params["block_size"], params["constant"]), params, extras
-    if operation_id == "open":
-        return morphology.opening(image, tuple(params["kernel"]), params["iterations"]), params, extras
-    if operation_id == "close":
-        return morphology.closing(image, tuple(params["kernel"]), params["iterations"]), params, extras
     if operation_id == "sharpen":
         result, blurred = enhancement.sharpen(image, params["sigma"], params["amount"])
         extras.append(("blur", blurred))
@@ -232,7 +172,7 @@ def _apply(operation_id: str, image: np.ndarray, params: dict, context: dict) ->
 
 def run_pipeline(image: np.ndarray, recipe: list[str | dict], context: dict | None = None) -> PipelineResult:
     initial_kind = "color" if image.ndim == 3 else "gray"
-    normalized = normalize_recipe(recipe, initial_kind=initial_kind, auto_gray=True)
+    normalized = normalize_recipe(recipe, initial_kind=initial_kind)
     result = image.copy()
     steps: list[tuple[str, np.ndarray]] = []
     operation_metadata = []
@@ -246,45 +186,3 @@ def run_pipeline(image: np.ndarray, recipe: list[str | dict], context: dict | No
             steps.append((f"{len(steps) + 1:02}_{item['op']}", result))
         operation_metadata.append({"op": item["op"], "label": spec.label, "params": params, **metadata})
     return PipelineResult(result, normalized, steps, {"operations": operation_metadata})
-
-
-def _legacy_geometry(image: np.ndarray, config: dict, detections: list[dict]) -> Candidate:
-    try:
-        if "corners" in config:
-            recipe = [{"op": "perspective", "params": {"corners": config["corners"]}}]
-        elif "angle" in config:
-            recipe = [{"op": "rotate", "params": {"angle": config["angle"]}}]
-        else:
-            quad = detect_document_quad(image)
-            if quad is not None:
-                recipe = [{"op": "perspective", "params": {"corners": quad.tolist()}}]
-            else:
-                angle = consistent_text_angle(detections)
-                if angle is None:
-                    raise PipelineUnavailable("没有可靠四边形或一致文字倾角；可手动配置 corners/angle")
-                recipe = [{"op": "rotate", "params": {"angle": angle}}]
-        run = run_pipeline(image, recipe, {"config": config, "raw_detections": detections})
-        metadata = dict(run.metadata)
-        if run.metadata.get("operations"):
-            metadata.update({key: value for key, value in run.metadata["operations"][-1].items() if key not in {"op", "label", "params"}})
-        return Candidate("geometry", run.image, run.steps, metadata)
-    except PipelineUnavailable as exc:
-        return Candidate("geometry", None, skip_reason=str(exc))
-
-
-def make_legacy_candidate(name: str, image: np.ndarray, config: dict, raw_detections: list[dict]) -> Candidate:
-    if name not in LEGACY_METHODS:
-        raise ValueError(f"Unknown method: {name}")
-    if name == "geometry":
-        return _legacy_geometry(image, config, raw_detections)
-    try:
-        run = run_pipeline(image, LEGACY_RECIPES[name], {"config": config, "raw_detections": raw_detections})
-        metadata = dict(run.metadata)
-        if name == "roi" and run.metadata.get("operations"):
-            roi_meta = next((item for item in run.metadata["operations"] if item["op"] == "roi"), {})
-            metadata.update({key: value for key, value in roi_meta.items() if key not in {"op", "label", "params"}})
-        if name == "roi":
-            metadata.setdefault("note", "Region segmentation only; auto ROI inherits missed detections from raw OCR.")
-        return Candidate(name, run.image, run.steps, metadata)
-    except PipelineUnavailable as exc:
-        return Candidate(name, None, skip_reason=str(exc))

@@ -65,17 +65,3 @@ def load_ground_truth(path: Path) -> dict[str, str]:
                 raise ValueError(f"ground truth 文件名为空或重复: {name!r}")
             answers[name] = row["ground_truth"] or ""
         return answers
-
-
-def ensure_ground_truth_template(path: Path, image_names: list[str]) -> dict[str, str]:
-    answers = load_ground_truth(path)
-    missing = [name for name in image_names if name not in answers]
-    if not path.exists() or missing:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        exists = path.exists()
-        with path.open("a" if exists else "w", encoding="utf-8-sig", newline="") as stream:
-            writer = csv.writer(stream)
-            if not exists:
-                writer.writerow(["image_name", "ground_truth"])
-            writer.writerows((name, "") for name in missing)
-    return answers

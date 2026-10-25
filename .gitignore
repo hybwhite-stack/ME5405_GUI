@@ -13,5 +13,4 @@ images/raw/*
 !images/raw/.gitkeep
 ground_truth.csv
 manual_recipes.json
-.venv/
 .vscode/

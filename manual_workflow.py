@@ -1,15 +1,12 @@
 """Testable controller and exporter used by the Tkinter manual workflow."""
 from __future__ import annotations
-
 import csv
 from datetime import datetime
 from html import escape
 import json
 from pathlib import Path
 import shutil
-
 import cv2
-
 from evaluation import character_metrics, load_ground_truth, normalize_text
 from ocr_pipeline import normalize_detection, render_annotated_image
 from preprocess import recipe_label, run_pipeline, save_image
@@ -47,24 +44,19 @@ def _reading_order(detections: list[dict]) -> list[list[dict]]:
     return [sorted(line["items"], key=lambda item: item["x_min"]) for line in lines]
 
 
-def _assemble_text(detections: list[dict], accepted_only: bool = False) -> str:
-    items = [item for item in detections if not accepted_only or item["accepted"]]
-    return "\n".join(item["text"] for line in _reading_order(items) for item in line)
+def _assemble_text(detections: list[dict]) -> str:
+    return "\n".join(item["text"] for line in _reading_order(detections) for item in line)
 
 
 def candidate_statistics(result: dict) -> None:
-    """Calculate the OCR summary locally so the GUI does not depend on batch code."""
+    """Calculate the OCR summary for the selected image."""
     detections = result["detections"]
     result["text"] = _assemble_text(detections)
-    result["accepted_text"] = _assemble_text(detections, True)
-    result["region_count"] = len(detections)
-    result["accepted_count"] = sum(item["accepted"] for item in detections)
     weights = [max(1, len(normalize_text(item["text"], "normalized"))) for item in detections]
     result["weighted_confidence"] = (
         sum(item["confidence"] * weight for item, weight in zip(detections, weights))
         / max(1, sum(weights))
     )
-    result["character_count"] = len(normalize_text(result["text"], "normalized"))
 
 
 def run_ocr(reader, image_name: str, processed, threshold: float = 0.20) -> dict:
@@ -107,7 +99,6 @@ def execute_attempt(
         "metadata": pipeline.metadata,
         "detections": ocr["detections"],
         "text": ocr["text"],
-        "accepted_text": ocr["accepted_text"],
         "weighted_confidence": ocr["weighted_confidence"],
         "annotated": ocr["annotated"],
         "evaluation": metric,

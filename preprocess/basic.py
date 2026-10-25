@@ -20,7 +20,6 @@ def crop_roi(image: np.ndarray, roi: list[int]) -> tuple[np.ndarray, dict]:
     if not isinstance(roi, list) or len(roi) != 4 or any(type(value) is not int for value in roi):
         raise ValueError("roi must be four integers [x,y,width,height]")
     x, y, width, height = roi
-    source_height, source_width = image.shape[:2]
     return image[y:y + height, x:x + width].copy(), {
         "roi_original_xywh": [x, y, width, height],
         "original_to_processed": [[1, 0, -x], [0, 1, -y], [0, 0, 1]],

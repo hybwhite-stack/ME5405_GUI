@@ -8,7 +8,7 @@ the raw-image baseline using confidence and character error rate (CER).
 ## Main features
 
 - EasyOCR recognition for Simplified Chinese and English
-- Independent, composable preprocessing operations
+- Manually selected preprocessing operations in an explicit order
 - Per-image parameters and recipes
 - Raw-image baseline and processed-image comparison
 - Manual ground truth and CER calculation
@@ -31,7 +31,7 @@ not committed to Git.
 
 1. Put local test images in `images/raw/`.
 2. Run `GUI.py`.
-3. Select one image and choose or assemble a preprocessing recipe.
+3. Select one image and add preprocessing operations in the order you want them to run.
 4. Adjust the parameters and inspect the preview.
 5. Enter the correct text and run OCR.
 6. Compare CER with the raw-image baseline and select the final recipe.

@@ -2,11 +2,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import importlib
 from pathlib import Path
-import sys
 import threading
-from types import ModuleType
 import webbrowser
 
 import cv2
@@ -14,38 +11,6 @@ import numpy as np
 from PIL import Image, ImageTk
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
-
-
-def _load_available_preprocessing() -> None:
-    """Load the current preprocess sources without their stale package imports."""
-    package = ModuleType("preprocess")
-    package.__path__ = [str(Path(__file__).resolve().parent / "preprocess")]
-    package.__package__ = "preprocess"
-    sys.modules["preprocess"] = package
-
-    # pipeline.py still imports the deleted module, but the matching operations
-    # are removed from the GUI catalog before any recipe can use them.
-    morphology = ModuleType("preprocess.morphology")
-    sys.modules[morphology.__name__] = morphology
-    package.morphology = morphology
-
-    previous_bytecode_setting = sys.dont_write_bytecode
-    sys.dont_write_bytecode = True
-    try:
-        basic = importlib.import_module("preprocess.basic")
-        pipeline = importlib.import_module("preprocess.pipeline")
-    finally:
-        sys.dont_write_bytecode = previous_bytecode_setting
-
-    unavailable = {"open", "close"}
-    for operation_id in unavailable:
-        pipeline.OPERATIONS.pop(operation_id, None)
-    for name in ("OPERATIONS", "PipelineUnavailable", "normalize_recipe", "recipe_label", "run_pipeline"):
-        setattr(package, name, getattr(pipeline, name))
-    package.save_image = basic.save_image
-
-
-_load_available_preprocessing()
 
 from evaluation import load_ground_truth
 from manual_workflow import execute_attempt, export_manual_run, load_recipes, save_ground_truth, save_recipes
@@ -590,9 +555,9 @@ class OCRPreprocessApp:
                 saved_image = saved.get(path.name, {})
                 recipe = saved_image.get("draft_recipe") or saved_image.get("recipe") or ["raw"]
                 try:
-                    recipe = normalize_recipe(recipe, auto_gray=False)
+                    recipe = normalize_recipe(recipe)
                 except ValueError:
-                    recipe = normalize_recipe(["raw"], auto_gray=False)
+                    recipe = normalize_recipe(["raw"])
                 self.entries[path.name] = {
                     "image_name": path.name,
                     "image_path": str(path),
@@ -713,7 +678,7 @@ class OCRPreprocessApp:
         if not entry:
             return False
         try:
-            entry["recipe"] = normalize_recipe(recipe, auto_gray=False)
+            entry["recipe"] = normalize_recipe(recipe)
         except ValueError as exc:
             messagebox.showwarning("流程不合法", str(exc))
             return False
@@ -898,9 +863,6 @@ class OCRPreprocessApp:
                 self.root.after(0, lambda error=exc: self._finish_error(error))
 
         threading.Thread(target=work, daemon=True).start()
-
-    def _finish_attempt(self, name: str, attempt: dict) -> None:
-        self._finish_attempts(name, [attempt])
 
     def _finish_attempts(self, name: str, attempts: list[dict]) -> None:
         entry = self.entries[name]
