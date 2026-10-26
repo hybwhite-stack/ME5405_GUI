@@ -1,17 +1,14 @@
-"""Visual, per-image preprocessing workflow for the ME5405 OCR project."""
+#AI-genrated GUI for improving the image processing efficiency.
 from __future__ import annotations
-
 from copy import deepcopy
 from pathlib import Path
 import threading
 import webbrowser
-
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-
 from evaluation import load_ground_truth
 from manual_workflow import execute_attempt, export_manual_run, load_recipes, save_ground_truth, save_recipes
 from ocr_pipeline import find_images, load_image
@@ -20,7 +17,6 @@ from preprocess import OPERATIONS, PipelineUnavailable, normalize_recipe, recipe
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-# Shared colors for the window.
 COLORS = {
     "background": "#F3F6FA", "surface": "#FFFFFF", "text": "#17243B",
     "muted": "#65748B", "border": "#DCE4EF", "accent": "#2563EB",
@@ -79,8 +75,6 @@ def styled_text(master, **kwargs) -> tk.Text:
 
 
 class ScrollPanel(ttk.Frame):
-    """Keep configuration reachable on short windows and high-DPI displays."""
-
     def __init__(self, master):
         super().__init__(master, style="Card.TFrame")
         self.canvas = tk.Canvas(self, background=COLORS["surface"], highlightthickness=0, width=1, height=1)
@@ -106,7 +100,7 @@ class ScrollPanel(ttk.Frame):
             return "break"
 
 
-# Parameter name, label, value type, and hint.
+#Parameter name, label, value type, and hint.
 PARAMETER_FIELDS: dict[str, list[tuple[str, str, str, str]]] = {
     "contrast": [
         ("low_percentile", "Low percentile (%)", "float", "Usually 0–10"),
@@ -200,7 +194,7 @@ class ImageView(ttk.Frame):
 
 
 class ParameterDialog(tk.Toplevel):
-    """Edit all numeric parameters of one preprocessing operation at once."""
+    #Edit all numeric parameters of one preprocessing operation at once.
 
     def __init__(self, master, operation_id: str, values: dict):
         super().__init__(master)
@@ -501,8 +495,6 @@ class OCRPreprocessApp:
         self.final_button.pack(fill="x", pady=(0, 8))
         ttk.Button(results, text="Export results", command=self.export_results).pack(fill="x")
         self._set_result_text("")
-
-        # Keep the OCR button visible while scrolling.
         footer = ttk.Frame(right, style="Card.TFrame", padding=(14, 10, 14, 14))
         footer.pack(fill="x", side="bottom", before=self.controls_notebook)
         ttk.Separator(footer).pack(fill="x", pady=(0, 10))
@@ -775,7 +767,6 @@ class OCRPreprocessApp:
         self._set_result_text("")
         self.metric_var.set("Confidence: pending   CER: pending")
         self.controls_notebook.select(self.configuration_tab)
-        # Preview does not start OCR.
         if not self.busy:
             self.run_button.configure(state="normal")
 
@@ -841,7 +832,6 @@ class OCRPreprocessApp:
                 results.append(execute_attempt(reader, Path(entry["image_path"]), original, recipe, truth, label="Selected steps"))
                 self.root.after(0, lambda completed=results: self._finish_attempts(name, completed))
             except Exception as exc:
-                # Keep the error for the UI callback.
                 self.root.after(0, lambda error=exc: self._finish_error(error))
 
         threading.Thread(target=work, daemon=True).start()

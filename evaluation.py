@@ -1,6 +1,5 @@
-"""Ground-truth evaluation. Confidence is never used as recognition accuracy."""
+#Using CER to evaluate  the consistency between OCR results and truth texts. 
 from __future__ import annotations
-
 import csv
 import unicodedata
 from pathlib import Path

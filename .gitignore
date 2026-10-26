@@ -3,12 +3,8 @@
 __pycache__/
 *.py[cod]
 *.bak
-
-# Downloaded OCR weights and generated results
 models/easyocr/
 outputs/
-
-# Local experiment data may contain personal information.
 images/raw/*
 !images/raw/.gitkeep
 ground_truth.csv

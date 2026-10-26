@@ -7,8 +7,7 @@ from .basic import crop_roi, to_gray
 
 
 class PipelineUnavailable(ValueError):
-    """The requested spatial operation lacks reliable coordinates or evidence."""
-
+#The requested spatial operation lacks reliable coordinates or evidence.
 
 @dataclass(frozen=True)
 class OperationSpec:

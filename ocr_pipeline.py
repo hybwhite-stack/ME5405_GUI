@@ -1,3 +1,4 @@
+#AI-generated code working with GUI.py to assist image loading, detection normalization, and annotated image rendering.
 from __future__ import annotations
 import math
 from pathlib import Path
@@ -22,7 +23,6 @@ def find_images(input_dir: Path) -> list[Path]:
 
 
 def load_image(image_path: Path) -> np.ndarray:
-    """Read an image through bytes so Windows paths may contain Chinese characters."""
     encoded = np.fromfile(str(image_path), dtype=np.uint8)
     image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if image is None:
@@ -35,11 +35,10 @@ def _font_candidates() -> Iterable[Path]:
     yield fonts_dir / "msyh.ttc"
     yield fonts_dir / "msyhbd.ttc"
     yield fonts_dir / "simhei.ttf"
-    yield fonts_dir / "simsun.ttc"
 
 
 def load_annotation_font(image_height: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    # Keep labels readable after large photographs are scaled down in HTML previews.
+    #Keep labels readable after large photographs are scaled down in HTML previews.
     font_size = max(26, min(48, image_height // 35))
     for font_path in _font_candidates():
         if font_path.exists():
@@ -76,7 +75,7 @@ def render_annotated_image(
     image_bgr: np.ndarray,
     detections: list[dict[str, Any]],
 ) -> np.ndarray:
-    """Return an annotated BGR image without writing it to disk."""
+    #Return an annotated BGR image without writing it to disk.
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     canvas = Image.fromarray(image_rgb)
     draw = ImageDraw.Draw(canvas)

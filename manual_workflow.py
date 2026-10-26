@@ -1,4 +1,4 @@
-"""Testable controller and exporter used by the Tkinter manual workflow."""
+#AI-generated code working with GUI.py to form a workflow for image preprocessing, OCR evaluation, and result export.
 from __future__ import annotations
 import csv
 from datetime import datetime
@@ -27,7 +27,7 @@ ATTEMPT_FIELDS = [
 
 
 def _reading_order(detections: list[dict]) -> list[list[dict]]:
-    """Arrange ordinary horizontal OCR regions from top-to-bottom, left-to-right."""
+    #Arrange ordinary horizontal OCR regions from top-to-bottom, left-to-right.
     lines: list[dict] = []
     for detection in sorted(
         detections,
@@ -49,7 +49,7 @@ def _assemble_text(detections: list[dict]) -> str:
 
 
 def candidate_statistics(result: dict) -> None:
-    """Calculate the OCR summary for the selected image."""
+    #Calculate the OCR summary for the selected image.
     detections = result["detections"]
     result["text"] = _assemble_text(detections)
     weights = [max(1, len(normalize_text(item["text"], "normalized"))) for item in detections]
@@ -144,7 +144,6 @@ def _metric_values(attempt: dict) -> tuple[str, str]:
 
 
 def _display_result_rows(final_rows: list[dict]) -> list[dict]:
-    """Build a vertical, human-readable CSV while retaining detailed data separately."""
     rows: list[dict] = []
     for result in final_rows:
         name = result["image_name"]
