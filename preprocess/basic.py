@@ -15,7 +15,7 @@ def save_image(path: Path, image: np.ndarray) -> None:
 def to_gray(image: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image.copy()
 
-# Crop the selected region.
+# Crop the selected region to improve OCR results.
 def crop_roi(image: np.ndarray, roi: list[int]) -> tuple[np.ndarray, dict]:
     if not isinstance(roi, list) or len(roi) != 4 or any(type(value) is not int for value in roi):
         raise ValueError("roi must be four integers [x,y,width,height]")
